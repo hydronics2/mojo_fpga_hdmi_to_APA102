@@ -5,7 +5,7 @@ driving 3 APA102 LEDs with the Mojo FPGA in lucid
 Using the beginner greeter.luc example to push bytes of APA102 LED data from an array of bytes to the SPI
 
 
-led array of bytes to turn 3 LEDs on when you send an 'h' over serial (any baud seems to work). It also prints back the array you just sent for troubleshooting. It works better if you continually update bytes (wrather than sending the array once) but this is nice for troubleshooting.
+The data2 array turns ON 3 LEDs red, blue, red, when you send an 'h' over serial (any baud seems to work). It also prints back the array you just sent for troubleshooting. It works better if you continually update bytes (wrather than sending the array once) but this is nice for troubleshooting.
 
 
 
