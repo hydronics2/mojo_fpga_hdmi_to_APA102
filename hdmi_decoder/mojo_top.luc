@@ -1,3 +1,14 @@
+// sets display area to x,y   
+// x from 40 to 448
+// y from 30 to 250
+
+//draggin the mouse over a blue screen causes the 2nd LED (led[1]) to turn ON
+
+//had to edit HDMI_decoder as it didn't work... imported dvi_decoder directly... not sure 
+//not sure if I need to run the clock at 100mhz..
+
+
+
 module mojo_top (
     input clk,              // 50MHz clock
     input rst_n,            // reset button (active low)
@@ -19,11 +30,22 @@ module mojo_top (
     input hdmi2_tmdsb [4],
     inout hdmi2_sda,        // EDID Interface
     input hdmi2_scl
+    
+    
+    
   ) {
   
-  sig rst;                  // reset signal
+  sig rst;  // reset signal
+  sig fclk; // 100MHz clock
+ 
+  // boost clock to 100MHz
+  clk_wiz_v3_6 clk_wiz;
+  always {
+    clk_wiz.CLK_IN1 = clk;   // 50MHz in
+    fclk = clk_wiz.CLK_OUT1; // 100MHz out (it's like magic!)
+  }
   
-  .clk(clk) {
+  .clk(fclk) {
     // The reset conditioner is used to synchronize the reset signal to the FPGA
     // clock. This ensures the entire FPGA comes out of reset at the same time.
     reset_conditioner reset_cond;
@@ -31,78 +53,122 @@ module mojo_top (
     // connect up the edid rom using a clock we know will alway be running
     edid_rom edid (.rst(rst), .sda(hdmi2_sda), .scl(hdmi2_scl));
     
-    avr_interface avr(.rst(rst));
      
+    
+    dff gameCounter[26];
+    dff blinkFlag[2];
+    
+    
+    
   }
   
   
-  hdmi_decoder hdmi_in (.rst(0));
+  //hdmi_decoder hdmi_in (.rst(0));
+  dvi_decoder hdmi_in (.rst(rst));
   
-  // use the pixel clock for the color data
   .clk(hdmi_in.pclk) {
+    dff x_ctr[11];
+    dff y_ctr[11];
+    //edge_detector hedge (#RISE(1), #FALL(0));
+    
     dff red[8];
     dff green[8];
     dff blue[8];
     
-    dff activeTest; 
+    dff vFlag[2];
+    
     
   }
   
   always {
-    reset_cond.in = ~rst_n; // input raw inverted reset signal
-    rst = reset_cond.out;   // conditioned reset
+    reset_cond.in = ~rst_n;    // input raw inverted reset signal
+    rst = reset_cond.out;      // conditioned reset
  
-    // connect inputs of avr
-    avr.cclk = cclk;
-    avr.spi_ss = spi_ss;
-    avr.spi_mosi = spi_mosi;
-    avr.spi_sck = spi_sck;
-    avr.rx = avr_tx;
-    avr.channel = hf; // ADC is unused so disable
-    avr.tx_block = avr_rx_busy; // block TX when AVR is busy
- 
-    // connect outputs of avr
-    spi_miso = avr.spi_miso;
-    spi_channel = avr.spi_channel;
-    avr_rx = avr.tx;
+    spi_miso = bz;             // not using SPI
+    spi_channel = bzzzz;       // not using flags
+    avr_rx = bz;               // not using serial port
     
     // connect HDMI input
     hdmi_in.tmds = hdmi2_tmds;
     hdmi_in.tmdsb = hdmi2_tmdsb;
     
-    // connect HDMI output
-    //hdmi1_tmds = hdmi.tmds_out;
-    //hdmi1_tmdsb = hdmi.tmdsb_out;
+    //hdmi_in.tmds = tmds;
+    //decoder.tmdsb = tmdsb;
+    
      
     // save colors
     red.d = hdmi_in.red;
-    green.d = hdmi_in.green;
+    //green.d = hdmi_in.green;
     blue.d = hdmi_in.blue;
     
+    //xPixel.d = hdmi_in.x;
+    //yPixel.d = hdmi_in.y;
+  
+    gameCounter.d = gameCounter.q + 1;
     
-    avr.new_tx_data = 0;
-    avr.tx_data = 0;
+    led[0] = gameCounter.q[25];    
+    led[7:2] = y_ctr.q;
         
-    led = red.q;
-        
-    activeTest.d = hdmi_in.active;
-
-    if(activeTest.q == 1)
-    {
-      if(!avr.tx_busy)
-      {
-        if(hdmi_in.x[5] == 0)// && hdmi_in.y[5] == 1)
-        {
-          avr.new_tx_data = 1;
-          avr.tx_data = red.q;
-          led[0] = 0;
-          avr.tx_data = red.q;
-        }
-      }
-    }else
-    {
-      led[0] = 1;
+   //hedge.in = hdmi_in.hsync;
+    
+    if (hdmi_in.de) {
+      x_ctr.d = x_ctr.q + 1;
+      //y_ctr.d = y_ctr.q + 1;
+      //if (hedge.out)
+        //y_ctr.d = y_ctr.q + 1;
     }
     
+    if(x_ctr.q > d800 && vFlag.q == 0) //goes up once every horizontal line arbitrary set at 800 pixels across (past the pixels we care about)
+    {
+      y_ctr.d = y_ctr.q + 1;
+      if(!&vFlag.q)
+      {
+        vFlag.d = vFlag.q + 1;
+      }
+    }
+    
+    if(x_ctr.q == d750) //get the flag ready to increase vertical count by 1
+    {
+      vFlag.d = 0;
+    }
+    
+    if(hdmi_in.hsync)
+    {
+      x_ctr.d = 0;
+    }
+    
+    if (hdmi_in.vsync) {
+      x_ctr.d = 0;
+      y_ctr.d = 0;
+      vFlag.d = 0;
+    }
+
+
+    if(y_ctr.q > 30 && y_ctr.q < 250 && x_ctr.q > 40 && x_ctr.q < 448 && hdmi_in.de && blinkFlag.q == 0)
+    {
+      if(red.q > 30)
+      {
+      if(gameCounter.q[25] == 1)
+        {
+          if(!&blinkFlag.q)
+          {
+            blinkFlag.d = blinkFlag.q + 1;
+          }
+          led[1] = 1;
+        }else{
+          led[1] = 0;
+        }
+      }
+    }
+    
+    if(gameCounter.q[25] == 0)
+    {
+      blinkFlag.d = 0;
+      led[1] = 0;
+    } 
+
   }
 }
+  
+
+  
