@@ -1,0 +1,75 @@
+module panel_1 (
+    input clk,  // clock
+    input x[11],
+    input y[11],
+    input active,
+    input red[8],
+
+    input gameCounter2[26],
+
+    output ledOut,
+    output transmitByte[8],
+    output newDataFlag
+  ) {
+  
+  dff blinkFlag[2](.clk(clk));
+  
+  
+  //dff xPixel[11](.clk(clk));
+  //dff yPixel[11](.clk(clk));
+
+  dff ledPanelActive[10](.clk(clk));
+    
+  dff pixelCounter[10](.clk(clk));
+  
+
+  always {
+    
+    //xPixel.d = x;
+    //yPixel.d = y;
+    newDataFlag = 0;
+    transmitByte = 0;
+    
+    ledOut = 0;
+    
+    if(x > 30 && x < 250 && active && blinkFlag.q == 0 && gameCounter2[25] == 1) // && xPixel.q > 40 && xPixel.q < 448 && active && blinkFlag.q == 0)
+    {
+      //ledOut = 1;
+      if(red > 30)
+      {
+        if(!&blinkFlag.q)
+        {
+          blinkFlag.d = blinkFlag.q + 1;
+        }
+        ledOut = 1;
+      }
+      
+    }
+    
+    if(x >= 40 && x < 74 && y >= 30 && y < 50 && active) //panel 1 ... #1 panel is 34 pixels wide x 20 deep
+    {    
+      ledPanelActive.d[0] = 1;
+    }else{
+      ledPanelActive.d[0] = 0;
+    }
+    
+    if(ledPanelActive.q[0] == 1)
+    {
+      pixelCounter.d = pixelCounter.q + 1;
+    }
+    
+
+    if(y == d500) //get the flag ready to increase vertical count by 1
+    {
+      transmitByte = pixelCounter.q[7:0];
+      newDataFlag = 1;
+    }
+    if(y == d600) //get the flag ready to increase vertical count by 1
+    {
+    pixelCounter.d = 0;
+    }    
+    
+
+    
+  }
+}
