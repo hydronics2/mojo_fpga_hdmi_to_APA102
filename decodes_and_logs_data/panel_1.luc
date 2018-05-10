@@ -39,7 +39,7 @@ module panel_1 (
   //dff xPixel[11](.clk(clk));
   //dff yPixel[11](.clk(clk));
 
-  //dff ledPanelActive[10](.clk(clk));
+  dff ledPanelActive[10](.clk(clk));
     
   dff pixelInCounter[10](.clk(clk));
   
@@ -90,17 +90,22 @@ module panel_1 (
       // IDLE: Reset everything and wait for a new byte.
       state.IDLE:
         //newDataFlag = 0;
-        pixelInCounter.d = 0;
+        //pixelInCounter.d = 0;
+        ledOut = 0;
  
       // PROMPT: Print out name prompt.
       state.READ:
-        redRam.write_data = red;
-        greenRam.write_data = green;
-        blueRam.write_data = blue;
-        redRam.write_en = 1;
-        greenRam.write_en = 1;
-        blueRam.write_en = 1;
-        pixelInCounter.d = pixelInCounter.q + 1;
+        if(ledPanelActive.q == 1)
+        {
+          redRam.write_data = red;
+          greenRam.write_data = green;
+          blueRam.write_data = blue;
+          redRam.write_en = 1;
+          greenRam.write_en = 1;
+          blueRam.write_en = 1;
+          pixelInCounter.d = pixelInCounter.q + 1;
+          pixelAddress.d = pixelAddress.q + 1;
+        }
         
         // PROMPT: Print out name prompt.
       state.WRITE:
@@ -117,11 +122,11 @@ module panel_1 (
         }
         if(ledStartBitCounter.q == 5 && !spiBusySignal) //1st led frame
         { 
-          transmitByte = pixelAddress.q;
-          newDataFlag = 1;
+          //transmitByte = pixelAddress.q;
+          //newDataFlag = 1;
           if(rgbCounter.q == 0)
           {
-            ledByteOut = 8he7; //1st led frame
+            ledByteOut = 8he3; //1st led frame
             newSpiData = 1;
             rgbCounter.d = rgbCounter.q + 1;
           }
@@ -145,7 +150,7 @@ module panel_1 (
             pixelAddress.d = pixelAddress.q + 1;
           }            
          
-          if(pixelAddress.q == d680)
+          if(&pixelAddress.q)
           {
             ledStartBitCounter.d = ledStartBitCounter.q + 1;
           }
@@ -156,8 +161,10 @@ module panel_1 (
           newSpiData = 1;
           ledStartBitCounter.d = ledStartBitCounter.q + 1;
         } 
-        if(ledStartBitCounter.q > 10)
+        if(ledStartBitCounter.q == 10)
         {
+          //transmitByte = ledStartBitCounter.q;
+          //newDataFlag = 1;
           state.d = state.IDLE;
           writeStep.d = writeStep.IDLE;
           ledStartBitCounter.d = 0;
@@ -199,8 +206,9 @@ module panel_1 (
     if(x >= 40 && x < 74 && y >= 30 && y < 50 && active) //panel 1 ... #1 panel is 34 pixels wide x 20 deep
     {    
       state.d = state.READ;
+      ledPanelActive.d[0] = 0;
     }else{
-      //ledPanelActive.d[0] = 0;
+      ledPanelActive.d = 1;
     }
     
 //    if(ledPanelActive.q[0] == 1)
@@ -224,33 +232,7 @@ module panel_1 (
     }    
     
 
-    if(y == d330) 
-    {
-      //pixelAddress.d = d660;
-      if(!tx_busy)
-      {
-      //transmitByte = redRam.read_data;
-      //newDataFlag = 1;
-      }
-    }
-    if(y == d380) 
-    {
-      //pixelAddress.d = d660;
-      if(!tx_busy)
-      {
-      //transmitByte = greenRam.read_data;
-      //newDataFlag = 1;
-    }
-    }    
-    if(y == d450) 
-    {
-      //pixelAddress.d = d660;
-      if(!tx_busy)
-      {
-      //transmitByte = blueRam.read_data;
-      //newDataFlag = 1;
-    }
-    }  
+
     
     
     //if(y == d600) 

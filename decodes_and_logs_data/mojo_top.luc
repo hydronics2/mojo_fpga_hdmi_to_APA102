@@ -9,7 +9,8 @@
 //05/08/18 - took out 100mhz
 //         - top sends x/y to panel #1 module. panel #1 counts pixels (680) and serial prints
 
-//05/09/18 - logs rgb values to simple ram... writing too fast(?) to LED panel
+//05/09/18 - logs rgb values to simple ram... writes to panel... 
+//05/10/18 - logs first row across entire screen...and prints it to LED panel. ignoring small panel layout.
 
 
 
@@ -76,7 +77,7 @@ module mojo_top (
     dff ledPanelActive[10];
     
     panel_1 panel_1(.rst(rst));
-    spi_master spi_out(.rst(rst));
+    spi_master2 spi_out(.rst(rst));
     
   }
   
