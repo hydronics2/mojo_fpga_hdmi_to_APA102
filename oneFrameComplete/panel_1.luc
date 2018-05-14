@@ -1,0 +1,208 @@
+//APA 102 led strips receive data as follows
+//  Start frame 32 bits ZEROS
+// LED FRAME consists of three bits 111.... and 5 bits brightnes value followed by one byte each blue, green, red..
+// end frame is 4 bytes 8hFF.
+
+
+module panel_1 (
+    input clk,  // clock
+    input rst,
+    input x[11],
+    input y[11],
+    input active,
+    input red[8],
+    input green[8],
+    input blue[8],
+    input tx_busy,
+    
+
+    input gameCounter2[26],
+
+    output ledOut,
+    output transmitByte[8],
+    output newDataFlag,
+    
+    input spiBusySignal,
+    output newSpiData,
+    output ledByteOut[8],
+    
+    input ledPanelActiveFlag[6],
+    input ledPanelStartFlag
+  ) {
+  
+  .clk(clk) {
+    .rst(rst) {
+      fsm state = {IDLE, READ, WRITE}; // our state machine
+    }
+    
+    //dff pixelInCounter[9];
+  
+    dff ledWriteCounter[3];
+    dff ledStartBitCounter[4];
+    dff rgbCounter[4];
+    dff xAxis[6]; //panel size 34 x 20 pixels
+    dff yAxis[5];  //panel size 34 x 20 pixels
+ 
+    
+    dff pixelAddress[10]; // 10 allows for 2^10 = 1023 bytes... we need 680 per color per panel
+    
+    // we need our RAM to have an entry for every value of name_count
+    simple_ram redRam (#SIZE(8), #DEPTH($pow(2,pixelAddress.WIDTH)));
+    simple_ram blueRam (#SIZE(8), #DEPTH($pow(2,pixelAddress.WIDTH)));
+    simple_ram greenRam (#SIZE(8), #DEPTH($pow(2,pixelAddress.WIDTH)));
+    
+    dff panelControl1[2];
+    dff blinkFlag[2];
+  }
+  
+
+  always {
+    
+    redRam.address = pixelAddress.q;
+    greenRam.address = pixelAddress.q;
+    blueRam.address = pixelAddress.q;
+    redRam.write_data = 8hxx;
+    greenRam.write_data = 8hxx;
+    blueRam.write_data = 8hxx;
+    redRam.write_en = 0;
+    greenRam.write_en = 0;
+    blueRam.write_en = 0;
+
+    newDataFlag = 0;
+    transmitByte = 0;
+    
+    ledOut = 0;
+    
+    ledByteOut = 0;
+    newSpiData = 0;
+    
+    state.d = state.IDLE;
+    
+    
+    if(ledPanelActiveFlag[0] == 1 && panelControl1.q == 1)
+    {
+      state.d = state.READ;
+    }
+    if(ledPanelActiveFlag[0] == 0) //anytime when we're not counting horizontally it goes to zero
+    {  
+      xAxis.d = 0;
+    }
+    
+    
+    
+    if(pixelAddress.q == d680 && panelControl1.q == 1) 
+    {    
+      if(!tx_busy)
+      {
+        transmitByte = pixelAddress.q[7:0];
+        newDataFlag = 1;
+      }
+      panelControl1.d = 3;
+      //pixelInCounter.d = 0;
+      pixelAddress.d = 0;
+      ledWriteCounter.d = 0;
+      ledStartBitCounter.d = 0;
+      rgbCounter.d = 0;
+    }   
+    if(panelControl1.q == 3) 
+    {
+      state.d = state.WRITE; 
+    }   
+    
+
+    case (state.q) { // our FSM
+      // IDLE: Reset everything and wait for a new byte.
+      state.IDLE:
+        if(ledPanelStartFlag == 1)
+        {
+          panelControl1.d = 1;
+          pixelAddress.d = 0;
+          
+        }
+ 
+      // PROMPT: Print out name prompt.
+      state.READ:
+        if(xAxis.q < 34) //count 34 leds wide...
+        {
+          //panelControl1.d = 2;
+          redRam.write_data = red;
+          greenRam.write_data = green;
+          blueRam.write_data = blue;
+          redRam.write_en = 1;
+          greenRam.write_en = 1;
+          blueRam.write_en = 1;
+          //pixelInCounter.d = pixelInCounter.q + 1;
+          pixelAddress.d = pixelAddress.q + 1;
+          xAxis.d = xAxis.q + 1;
+        }
+
+        
+        // PROMPT: Print out name prompt.
+      state.WRITE:
+        if(ledStartBitCounter.q < 5 && !spiBusySignal)  //send atleast 32 0s first
+        {  
+          ledByteOut = 8b0;
+          newSpiData = 1;
+          ledStartBitCounter.d = ledStartBitCounter.q + 1;
+          pixelAddress.d = 0;
+          rgbCounter.d = 0;
+          
+        }
+        if(ledStartBitCounter.q == 5 && !spiBusySignal) //1st led frame
+        { 
+          
+          if(rgbCounter.q == 0)
+          {
+            ledByteOut = 8he3; //1st led frame
+            newSpiData = 1;
+            rgbCounter.d = rgbCounter.q + 1;
+          }
+          if(rgbCounter.q == 1)
+          { 
+            ledByteOut = blueRam.read_data;
+            newSpiData = 1;
+            rgbCounter.d = rgbCounter.q + 1;
+          }          
+          if(rgbCounter.q == 2)
+          { 
+            ledByteOut = greenRam.read_data;
+            newSpiData = 1;
+            rgbCounter.d = rgbCounter.q + 1;
+          }  
+          if(rgbCounter.q == 3)
+          { 
+            ledByteOut = redRam.read_data;
+            newSpiData = 1;
+            rgbCounter.d = 0;
+            pixelAddress.d = pixelAddress.q + 1;
+          }            
+         
+          if(pixelAddress.q == d680)
+          {
+            ledStartBitCounter.d = ledStartBitCounter.q + 1;
+          }
+        }
+        if(ledStartBitCounter.q > 5 && ledStartBitCounter.q < 12 && !spiBusySignal) //end frame 4 bytes of 8hFF
+        {  
+          ledByteOut = 8hff;
+          newSpiData = 1;
+          ledStartBitCounter.d = ledStartBitCounter.q + 1;
+        } 
+        if(ledStartBitCounter.q == 12)
+        {
+          panelControl1.d = 0;
+          //transmitByte = ledStartBitCounter.q;
+          //newDataFlag = 1;
+          state.d = state.IDLE;
+          //writeStep.d = writeStep.IDLE;
+          ledStartBitCounter.d = 0;
+          //pixelInCounter.d = 0;
+        }        
+        
+        
+    } 
+    
+ 
+    
+  }
+}
