@@ -1,0 +1,31 @@
+//becuase the HDMI signal reads right to left but the LED panel SPI data goes at serpentine... 
+//this is the start pixel for each LED row.. 
+
+//first pixel starts at location #33 in the HDMI sample buffer 0-679.... 34 pixels in each row
+//ROW 1: #33 => #0
+//ROW 2: #34 => #67
+//ROW 3: #101 => #68
+//ROW 4: #102 => #136
+// and so on
+
+
+module panelOneTrArray (
+    input address[5],  // ROM address
+    output rowPixelNumber[10]   // ROM output
+  ) {
+ 
+  const ARRAY_SIZE = 20;
+   
+  sig startBits[ARRAY_SIZE][10];
+  
+ 
+  always {
+      
+    //startBits = {10d33, 10d34, 10d101, 10d102, 10d169, 10d170, 10d237, 10d238, 10d305, 10d306, 10d373, 10d374, 10d441, 10d442, 10d509, 10d510, 10d577, 10d578, 10d645, 10d646};
+    startBits = {10d646, 10d645, 10d578, 10d577, 10d510, 10d509, 10d442, 10d441, 10d374, 10d373, 10d306, 10d305, 10d238, 10d237, 10d170, 10d169, 10d102, 10d101, 10d34, 10d33};
+    //startBits = {10d646, 10d645, 10d578, 10d577, 10d510, 10d509, 10d442, 10d441, 10d33, 10d33, 10d33, 10d33, 10d33, 10d33, 10d33, 10d33, 10d33, 10d33, 10d33, 10d33, 10d33};
+    
+    rowPixelNumber = startBits[address]; // 
+        
+  }
+}

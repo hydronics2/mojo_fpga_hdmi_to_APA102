@@ -9,6 +9,15 @@
 //05/08/18 - took out 100mhz
 //         - top sends x/y to panel #1 module. panel #1 counts pixels (680) and serial prints
 
+//05/09/18 - logs rgb values to simple ram... writes to panel... 
+//05/10/18 - logs first row across entire screen...and prints it to LED panel. ignoring small panel layout.
+//05/13/18 - one frame working ... thanks to the gods...
+//05/15/18 - abandoned work from yesterday... starting from pdmi_in_piel_area5
+//05/16/18 - writes leds correctly
+//05/16/18 - fixed vsync issue on top page
+
+
+
 
 
 module mojo_top (
@@ -31,14 +40,22 @@ module mojo_top (
     input hdmi2_tmds [4],   // HDMI In
     input hdmi2_tmdsb [4],
     inout hdmi2_sda,        // EDID Interface
-    input hdmi2_scl
+    input hdmi2_scl,
     
+    
+    output apa102_data,
+    output apa102_sck
     
     
   ) {
   
   sig rst;  // reset signal
+  
+  //start reading pixels at location 40,30 (x,y) on HDMI screen 1270 x 800
+  const X_START = 40; //
+  const Y_START = 30; //
 
+  panelOneTrArray panelOneTrArray;
   
   .clk(clk) {
     // The reset conditioner is used to synchronize the reset signal to the FPGA
@@ -52,8 +69,6 @@ module mojo_top (
     
     dff gameCounter[26];
     dff blinkFlag[2];
-    
- 
   }
   
   dvi_decoder hdmi_in (.rst(rst));
@@ -68,9 +83,10 @@ module mojo_top (
     
     dff vFlag[2];
     
-    dff ledPanelActive[10];
+    dff ledPanelActiveFlag[6]; //33 panels per mojo
     
-    panel_1 panel_1;
+    panel_1 panel_1(.rst(rst));
+    spi_master2 spi_out(.rst(rst));
     
   }
   
@@ -100,11 +116,17 @@ module mojo_top (
     
     avr.tx_data = panel_1.transmitByte;
     avr.new_tx_data = panel_1.newDataFlag;
-    panel_1.active = hdmi_in.de;
-    panel_1.x = x_ctr.q;
-    panel_1.y = y_ctr.q;
+
     panel_1.red = red.q;
-    panel_1.gameCounter2 = gameCounter.q;
+    panel_1.green = green.q;
+    panel_1.blue = blue.q;
+
+    panel_1.tx_busy = avr.tx_busy;
+    panel_1.ledPanelActiveFlag = ledPanelActiveFlag.q;
+    panel_1.ledPanelStartFlag = hdmi_in.vsync;   //flag to start reading frame
+    
+    panelOneTrArray.address = panel_1.rowPixelAddress;
+    panel_1.rowStartPixel = panelOneTrArray.rowPixelNumber; 
     
     
     // connect HDMI input
@@ -112,42 +134,39 @@ module mojo_top (
     hdmi_in.tmdsb = hdmi2_tmdsb;
     
     
+    spi_out.data_in = panel_1.ledByteOut;
+    spi_out.start = panel_1.newSpiData; 
+    panel_1.spiBusySignal = spi_out.busy;   
+    
+    spi_out.miso = 1b0;
+    apa102_data = spi_out.mosi;
+    apa102_sck = spi_out.sck;
 
     
      
     // save colors
     red.d = hdmi_in.red;
-    //green.d = hdmi_in.green;
+    green.d = hdmi_in.green;
     blue.d = hdmi_in.blue;
     
     gameCounter.d = gameCounter.q + 1;
     
     led[0] = gameCounter.q[25];  // this is a heart beat counter ~ 1 per second  
-    led[7:2] = red.q;           //has a default blue screen... turns on pixels momentarily if there is red
+    led[2] = panel_1.ledOut;    //flag from other module
+    led[7:3] = red.q;           //has a default black screen... turns on pixels momentarily if there is red
         
-    //hedge.in = hdmi_in.hsync;
+    ledPanelActiveFlag.d = 0;
     
     if (hdmi_in.de) {
       x_ctr.d = x_ctr.q + 1;
     }
     
-    if(x_ctr.q > d800 && vFlag.q == 0) //goes up once every horizontal line arbitrary set at 800 pixels across (past the pixels we care about)
-    {
-      y_ctr.d = y_ctr.q + 1;
-      if(!&vFlag.q)
-      {
-        vFlag.d = vFlag.q + 1;
-      }
-    }
-    
-    if(x_ctr.q == d750) //get the flag ready to increase vertical count by 1
-    {
-      vFlag.d = 0;
-    }
     
     if(hdmi_in.hsync)
     {
+      y_ctr.d = y_ctr.q + 1;
       x_ctr.d = 0;
+      vFlag.d = 0;
     }
     
     if (hdmi_in.vsync) {
@@ -156,8 +175,19 @@ module mojo_top (
       vFlag.d = 0;
     }
     
+    if(x_ctr.q >= X_START && y_ctr.q >= Y_START && hdmi_in.de) // active flag for Panel #1 module
+    {
+      ledPanelActiveFlag.d[0] = 1;  
+    }
+    else{
+      
+      ledPanelActiveFlag.d[0] = 0;
+    }  
     
-    if(y_ctr.q > 30 && y_ctr.q < 250 && x_ctr.q > 40 && x_ctr.q < 448 && hdmi_in.de && blinkFlag.q == 0)
+    
+        
+   
+     if(x_ctr.q >= X_START && x_ctr.q < 74 && y_ctr.q >= Y_START && y_ctr.q < 50 && hdmi_in.de && blinkFlag.q == 0) //this is a sample area for testing
     {
       if(red.q > 30)
       {
@@ -173,19 +203,18 @@ module mojo_top (
         }
       }
     }
-    
-    if(gameCounter.q[25] == 0)
+    if(gameCounter.q[25] == 0)  //this is just a flag for testing
     {
       blinkFlag.d = 0;
       led[1] = 0;
-    } 
+    }  
     
-    if(x_ctr.q >= 40 && x_ctr.q < 74 && y_ctr.q >= 30 && y_ctr.q < 50 && hdmi_in.de) //tests if x and y are in the panel #1 active area
-    {    
-      ledPanelActive.d[0] = 1;
-    }else{
-      ledPanelActive.d[0] = 0;
-    }
+        
+
+
+ 
+    
+  
   
   }
 }
