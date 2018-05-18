@@ -5,6 +5,8 @@
 //dragging the mouse over the above acstive screen area the 2nd LED (led[1]) to turn ON
 
 
+//05/17/18 - fixed verical line counting... starts at 30 lines down now...
+
 module mojo_top (
     input clk,              // 50MHz clock
     input rst_n,            // reset button (active low)
