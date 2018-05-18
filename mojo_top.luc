@@ -1,23 +1,8 @@
-// sets display area to x,y   
+// sets display area of the HDMI screen to project to the APA102 led grid...   
 // x from 40 to 448
 // y from 30 to 250
 
-//draggin the mouse over the above acstive screen area the 2nd LED (led[1]) to turn ON
-
-//had to edit HDMI_decoder as it didn't work... imported dvi_decoder directly... not sure 
-
-//05/08/18 - took out 100mhz
-//         - top sends x/y to panel #1 module. panel #1 counts pixels (680) and serial prints
-
-//05/09/18 - logs rgb values to simple ram... writes to panel... 
-//05/10/18 - logs first row across entire screen...and prints it to LED panel. ignoring small panel layout.
-//05/13/18 - one frame working ... thanks to the gods...
-//05/15/18 - abandoned work from yesterday... starting from pdmi_in_piel_area5
-//05/16/18 - writes leds correctly
-//05/16/18 - fixed vsync issue on top page
-
-
-
+//dragging the mouse over the above acstive screen area the 2nd LED (led[1]) to turn ON
 
 
 module mojo_top (
@@ -73,15 +58,13 @@ module mojo_top (
   
   dvi_decoder hdmi_in (.rst(rst));
   
-  .clk(hdmi_in.pclk) {
+  .clk(hdmi_in.pclk) {  //this is the clock speed inherited from the HDMI... not sure how fast it is?
     dff x_ctr[11];
     dff y_ctr[11];
     
     dff red[8];
     dff green[8];
     dff blue[8];
-    
-    dff vFlag[2];
     
     dff ledPanelActiveFlag[6]; //33 panels per mojo
     
@@ -157,23 +140,34 @@ module mojo_top (
         
     ledPanelActiveFlag.d = 0;
     
+    
+    if (hdmi_in.vsync) {
+      x_ctr.d = 0;
+      y_ctr.d = 0;
+    }
+
+    if(hdmi_in.hsync)
+    {
+      x_ctr.d = 0;
+    }
+    
+       
+    
     if (hdmi_in.de) {
       x_ctr.d = x_ctr.q + 1;
     }
     
     
-    if(hdmi_in.hsync)
+    
+    
+    if(x_ctr.q == 1200) //goes up once every horizontal line arbitrary set at 1200... using hsync didn't work(?) so this was the fix
     {
       y_ctr.d = y_ctr.q + 1;
-      x_ctr.d = 0;
-      vFlag.d = 0;
     }
     
-    if (hdmi_in.vsync) {
-      x_ctr.d = 0;
-      y_ctr.d = 0;
-      vFlag.d = 0;
-    }
+    
+    
+    
     
     if(x_ctr.q >= X_START && y_ctr.q >= Y_START && hdmi_in.de) // active flag for Panel #1 module
     {
@@ -208,13 +202,6 @@ module mojo_top (
       blinkFlag.d = 0;
       led[1] = 0;
     }  
-    
-        
-
-
- 
-    
-  
   
   }
 }
