@@ -6,4 +6,7 @@ The hardware consists of a Spartan 6 FPGA on an Mojo development board by Embedd
 
 Also uses the HDMI shield for the Mojo by Embedded Micro: https://embeddedmicro.com/products/hdmi-shield
 
-This design builds off of a lucid module example for decoding HDMI signal: 
+This design builds off of a lucid module example for decoding HDMI signal: https://embeddedmicro.com/blogs/tutorials/hdmi-shield-basics
+
+Here's what it looks like live: https://www.instagram.com/p/Bi2yngpBJ0O
+
