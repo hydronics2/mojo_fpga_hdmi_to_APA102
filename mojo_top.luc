@@ -1,11 +1,11 @@
-// sets display area of the HDMI screen to project to the APA102 led grid...   
+// sets display area of the HDMI screen to project to the APA102 led grid...
+
+//HDMI pixels captured into frame buffer:   
 // x from 40 to 448
 // y from 30 to 250
 
-//dragging the mouse over the above acstive screen area the 2nd LED (led[1]) to turn ON
+//dragging the mouse over the above active screen area the 2nd LED (led[1]) to turn ON
 
-
-//05/17/18 - fixed verical line counting... starts at 30 lines down now...
 
 module mojo_top (
     input clk,              // 50MHz clock
@@ -20,69 +20,69 @@ module mojo_top (
     input avr_tx,           // AVR TX (FPGA RX)
     output avr_rx,          // AVR RX (FPGA TX)
     input avr_rx_busy,       // AVR RX buffer full
-    
-    
-    
-    
+
+
+
+
     input hdmi2_tmds [4],   // HDMI In
     input hdmi2_tmdsb [4],
     inout hdmi2_sda,        // EDID Interface
     input hdmi2_scl,
-    
-    
+
+
     output apa102_data,
     output apa102_sck
-    
-    
+
+
   ) {
-  
+
   sig rst;  // reset signal
-  
+
   //start reading pixels at location 40,30 (x,y) on HDMI screen 1270 x 800
   const X_START = 40; //
   const Y_START = 30; //
 
   panelOneTrArray panelOneTrArray;
-  
+
   .clk(clk) {
     // The reset conditioner is used to synchronize the reset signal to the FPGA
     // clock. This ensures the entire FPGA comes out of reset at the same time.
     reset_conditioner reset_cond;
-    
+
     // connect up the edid rom using a clock we know will alway be running
     edid_rom edid (.rst(rst), .sda(hdmi2_sda), .scl(hdmi2_scl));
-    
-    avr_interface avr(.rst(rst)); 
-    
+
+    avr_interface avr(.rst(rst));
+
     dff gameCounter[26];
     dff blinkFlag[2];
   }
-  
+
   dvi_decoder hdmi_in (.rst(rst));
-  
+
   .clk(hdmi_in.pclk) {  //this is the clock speed inherited from the HDMI... not sure how fast it is?
     dff x_ctr[11];
     dff y_ctr[11];
-    
+
     dff red[8];
     dff green[8];
     dff blue[8];
-    
+
     dff ledPanelActiveFlag[6]; //33 panels per mojo
-    
+
     panel_1 panel_1(.rst(rst));
     spi_master2 spi_out(.rst(rst));
-    
+
   }
-  
+
   always {
     reset_cond.in = ~rst_n;    // input raw inverted reset signal
     rst = reset_cond.out;      // conditioned reset
- 
+
     //spi_miso = bz;             // not using SPI
     //spi_channel = bzzzz;       // not using flags
     //avr_rx = bz;               // not using serial port
-    
+
     // connect inputs of avr
     avr.cclk = cclk;
     avr.spi_ss = spi_ss;
@@ -91,14 +91,14 @@ module mojo_top (
     avr.rx = avr_tx;
     avr.channel = hf; // ADC is unused so disable
     avr.tx_block = avr_rx_busy; // block TX when AVR is busy
- 
+
     // connect outputs of avr
     spi_miso = avr.spi_miso;
     spi_channel = avr.spi_channel;
     avr_rx = avr.tx;
     avr.new_tx_data = 0;
     avr.tx_data = 0;
-    
+
     avr.tx_data = panel_1.transmitByte;
     avr.new_tx_data = panel_1.newDataFlag;
 
@@ -109,40 +109,40 @@ module mojo_top (
     panel_1.tx_busy = avr.tx_busy;
     panel_1.ledPanelActiveFlag = ledPanelActiveFlag.q;
     panel_1.ledPanelStartFlag = hdmi_in.vsync;   //flag to start reading frame
-    
+
     panelOneTrArray.address = panel_1.rowPixelAddress;
-    panel_1.rowStartPixel = panelOneTrArray.rowPixelNumber; 
-    
-    
+    panel_1.rowStartPixel = panelOneTrArray.rowPixelNumber;
+
+
     // connect HDMI input
     hdmi_in.tmds = hdmi2_tmds;
     hdmi_in.tmdsb = hdmi2_tmdsb;
-    
-    
+
+
     spi_out.data_in = panel_1.ledByteOut;
-    spi_out.start = panel_1.newSpiData; 
-    panel_1.spiBusySignal = spi_out.busy;   
-    
+    spi_out.start = panel_1.newSpiData;
+    panel_1.spiBusySignal = spi_out.busy;
+
     spi_out.miso = 1b0;
     apa102_data = spi_out.mosi;
     apa102_sck = spi_out.sck;
 
-    
-     
+
+
     // save colors
     red.d = hdmi_in.red;
     green.d = hdmi_in.green;
     blue.d = hdmi_in.blue;
-    
+
     gameCounter.d = gameCounter.q + 1;
-    
-    led[0] = gameCounter.q[25];  // this is a heart beat counter ~ 1 per second  
+
+    led[0] = gameCounter.q[25];  // this is a heart beat counter ~ 1 per second
     led[2] = panel_1.ledOut;    //flag from other module
     led[7:3] = red.q;           //has a default black screen... turns on pixels momentarily if there is red
-        
+
     ledPanelActiveFlag.d = 0;
-    
-    
+
+
     if (hdmi_in.vsync) {
       x_ctr.d = 0;
       y_ctr.d = 0;
@@ -152,37 +152,37 @@ module mojo_top (
     {
       x_ctr.d = 0;
     }
-    
-       
-    
+
+
+
     if (hdmi_in.de) {
       x_ctr.d = x_ctr.q + 1;
     }
-    
-    
-    
-    
+
+
+
+
     if(x_ctr.q == 1200) //goes up once every horizontal line arbitrary set at 1200... using hsync didn't work(?) so this was the fix
     {
       y_ctr.d = y_ctr.q + 1;
     }
-    
-    
-    
-    
-    
+
+
+
+
+
     if(x_ctr.q >= X_START && y_ctr.q >= Y_START && hdmi_in.de) // active flag for Panel #1 module
     {
-      ledPanelActiveFlag.d[0] = 1;  
+      ledPanelActiveFlag.d[0] = 1;
     }
     else{
-      
+
       ledPanelActiveFlag.d[0] = 0;
-    }  
-    
-    
-        
-   
+    }
+
+
+
+
      if(x_ctr.q >= X_START && x_ctr.q < 74 && y_ctr.q >= Y_START && y_ctr.q < 50 && hdmi_in.de && blinkFlag.q == 0) //this is a sample area for testing
     {
       if(red.q > 30)
@@ -203,9 +203,7 @@ module mojo_top (
     {
       blinkFlag.d = 0;
       led[1] = 0;
-    }  
-  
+    }
+
   }
 }
-
-  

@@ -1,6 +1,6 @@
 //APA 102 led strips receive data as follows
 //  Start frame 32 bits ZEROS
-// LED FRAME consists of three bits 111.... and 5 bits brightnes value followed by one byte each blue, green, red..
+// LED FRAME consists of three bits 111.... and 5 bits brightness value followed by one byte each blue, green, red..
 // end frame is 4 bytes 8hFF.
 
 
@@ -16,47 +16,47 @@ module panel_1 (
     output ledOut,
     output transmitByte[8],
     output newDataFlag,
-    
+
     input spiBusySignal,
     output newSpiData,
     output ledByteOut[8],
-    
+
     output rowPixelAddress[5],
     input rowStartPixel[10],
-    
+
     input ledPanelActiveFlag[6],
     input ledPanelStartFlag
   ) {
-  
+
   const X_LENGTH = 34; //34 pixels wide
   const Y_LENGTH = 20; //20 pixels deep
-  
+
   .clk(clk) {
     .rst(rst) {
       fsm state = {IDLE, READ, WRITE}; // our state machine
     }
-    
+
     dff ledStartBitCounter[4];
     dff rgbCounter[4];
     dff xAxis[6]; //panel size 34 x 20 pixels
     dff xAxis2[6]; //panel width for counting write cycles
     dff yAxis[5];  //panel size 34 x 20 pixels
- 
-    
+
+
     dff pixelAddress[10]; // 10 allows for 2^10 = 1023 bytes... we need 680 per color per panel
-    
+
     // we need our RAM to have an entry for every value of name_count
     simple_ram redRam (#SIZE(8), #DEPTH($pow(2,pixelAddress.WIDTH)));
     simple_ram blueRam (#SIZE(8), #DEPTH($pow(2,pixelAddress.WIDTH)));
     simple_ram greenRam (#SIZE(8), #DEPTH($pow(2,pixelAddress.WIDTH)));
-    
+
     dff panelControl1[2];
 
   }
-  
+
 
   always {
-    
+
     redRam.address = pixelAddress.q;
     greenRam.address = pixelAddress.q;
     blueRam.address = pixelAddress.q;
@@ -69,40 +69,40 @@ module panel_1 (
 
     newDataFlag = 0;
     transmitByte = 0;
-    
+
     ledOut = 0;
-    
+
     ledByteOut = 0;
     newSpiData = 0;
-    
+
     rowPixelAddress = 0;
-    
+
     state.d = state.IDLE;
-    
-    
+
+
     if(ledPanelActiveFlag[0] == 1 && panelControl1.q == 1)
     {
       state.d = state.READ;
     }
     if(ledPanelActiveFlag[0] == 0) //anytime when we're not counting horizontally it goes to zero
-    {  
+    {
       xAxis.d = ledPanelActiveFlag[0];
     }
-    
-    
-    
+
+
+
     if(pixelAddress.q == d680 && panelControl1.q == 1)  //read all the pixels... switch from reading to writing
-    {    
+    {
       panelControl1.d = 3;
       pixelAddress.d = 0;
       ledStartBitCounter.d = 0;
       rgbCounter.d = 0;
-    }   
-    if(panelControl1.q == 3) 
+    }
+    if(panelControl1.q == 3)
     {
-      state.d = state.WRITE; 
-    }   
-    
+      state.d = state.WRITE;
+    }
+
 
     case (state.q) { // our FSM
       // IDLE: Reset everything and wait for HDMI panel#1 pixels.
@@ -113,8 +113,8 @@ module panel_1 (
           pixelAddress.d = 0;
           xAxis.d = 0;
         }
- 
-      // 
+
+      //
       state.READ:
         if(xAxis.q < X_LENGTH) //count 34 leds wide...
         {
@@ -128,21 +128,21 @@ module panel_1 (
           xAxis.d = xAxis.q + 1;
         }
 
-        
+
         // Write LEDs to strip
       state.WRITE:
         if(ledStartBitCounter.q < 5 && !spiBusySignal)  //send atleast 32 0s first
-        {  
+        {
           ledByteOut = 8b0;
           newSpiData = 1;
           ledStartBitCounter.d = ledStartBitCounter.q + 1;
           pixelAddress.d = X_LENGTH - 1; //first pixel in LED strip starts at 33 and counts down to zero
           rgbCounter.d = 0;
-    
+
         }
         if(ledStartBitCounter.q == 5 && !spiBusySignal) //1st led frame
         { 
-          
+
           if(rgbCounter.q == 0)
           {
             xAxis2.d = xAxis2.q + 1;
@@ -151,22 +151,22 @@ module panel_1 (
             rgbCounter.d = 1;
           }
           if(rgbCounter.q == 1)
-          { 
+          {
             ledByteOut = blueRam.read_data;
             newSpiData = 1;
             rgbCounter.d = 2;
-          }          
+          }
           if(rgbCounter.q == 2)
-          { 
+          {
             ledByteOut = greenRam.read_data;
             newSpiData = 1;
             rgbCounter.d = 3;
-          }  
+          }
           if(rgbCounter.q == 3)
-          { 
+          {
             ledByteOut = redRam.read_data;
             newSpiData = 1;
-            
+
               if(xAxis2.q > X_LENGTH - 1) //34 new row
               {
                 rgbCounter.d = 4;
@@ -184,36 +184,36 @@ module panel_1 (
                   pixelAddress.d = pixelAddress.q - 1;
                 }
               }
-            
-            }  
-          
 
-          
+            }
+
+
+
           if(rgbCounter.q == 4)
-          {     
+          {
             if(!tx_busy)
             {
               transmitByte = rowStartPixel[7:0];
               newDataFlag = 1;
             }
-            
-            rowPixelAddress = yAxis.q;     
+
+            rowPixelAddress = yAxis.q;
             pixelAddress.d = rowStartPixel;
             rgbCounter.d = 0;
             xAxis2.d = 0;
           }
-          
+
           if(yAxis.q > Y_LENGTH - 1) //end if wrote 0-19 rows
           {
             ledStartBitCounter.d = ledStartBitCounter.q + 1;
           }
         }
         if(ledStartBitCounter.q > 5 && ledStartBitCounter.q < 12 && !spiBusySignal) //end frame 4+ bytes of 8hFF
-        {  
+        {
           ledByteOut = 8hff;
           newSpiData = 1;
           ledStartBitCounter.d = ledStartBitCounter.q + 1;
-        } 
+        }
         if(ledStartBitCounter.q == 12)
         {
           panelControl1.d = 0;
@@ -222,9 +222,9 @@ module panel_1 (
           yAxis.d = 0;
           xAxis2.d = 0;
           xAxis.d = 0;
-        }        
-      
-    } 
-  
+        }
+
+    }
+
   }
 }
